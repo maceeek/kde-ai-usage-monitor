@@ -1,0 +1,46 @@
+kde-ai-usage-monitor
+====================
+
+This project is a derivative work — an AI-assisted port to Linux and KDE Plasma
+of:
+
+    Claude Code Usage Monitor
+    https://github.com/CodeZeno/Claude-Code-Usage-Monitor
+    Copyright (c) 2025 Craig Constable / Code Zeno Pty Ltd
+    Licensed under the MIT License
+
+The upstream project is a Win32 desktop widget written in Rust. This port keeps
+its provider-polling layer and replaces everything platform-specific.
+
+Files derived from upstream
+---------------------------
+
+  src/providers.rs           <- src/providers.rs (Win32 menu ids removed)
+  src/models.rs              <- src/models.rs (reset instants are Unix seconds)
+  src/poller.rs              <- src/poller.rs (per-provider results; new
+                                ISO 8601 parser covering UTC offsets)
+  src/poller/claude.rs       <- src/poller/claude.rs (endpoints and header
+                                handling kept; Linux credential discovery)
+  src/poller/codex.rs        <- src/poller/codex.rs
+  src/poller/cursor.rs       <- src/poller/cursor.rs
+  src/poller/opencode.rs     <- src/poller/opencode.rs
+  src/poller/antigravity.rs  <- src/poller/antigravity.rs
+  src/poller/secret_store.rs <- the Windows Credential Manager reads in
+                                src/poller/antigravity.rs, reimplemented over
+                                libsecret and KWallet
+  src/linux_sqlite.rs        <- src/winsqlite.rs (dlopen instead of raw-dylib)
+  src/diagnose.rs            <- src/diagnose.rs
+  src/format.rs              <- the duration formatting in src/poller.rs
+
+Written for this project
+------------------------
+
+  src/main.rs, src/config.rs, src/cache.rs, src/snapshot.rs,
+  plasmoid/**, packaging/**, .github/**
+
+Not ported
+----------
+
+Upstream's Win32 window, theme engine, theme studio, tray icon, updater, and
+localisation layer have no counterpart here: Plasma draws the widget, themes it,
+and updates it through the distribution's package manager.

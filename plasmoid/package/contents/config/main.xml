@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+                          http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+    <kcfgfile name=""/>
+
+    <group name="General">
+        <entry name="binaryPath" type="String">
+            <label>Path to the kde-ai-usage-monitor binary</label>
+            <default>kde-ai-usage-monitor</default>
+        </entry>
+        <entry name="intervalSeconds" type="Int">
+            <label>Seconds between polls</label>
+            <default>300</default>
+            <min>30</min>
+        </entry>
+        <entry name="refreshTokens" type="Bool">
+            <label>Let a provider's CLI refresh an expired token</label>
+            <default>false</default>
+        </entry>
+        <entry name="warningThreshold" type="Int">
+            <label>Usage percentage that turns the panel text amber</label>
+            <default>70</default>
+        </entry>
+        <entry name="criticalThreshold" type="Int">
+            <label>Usage percentage that turns the panel text red</label>
+            <default>90</default>
+        </entry>
+        <entry name="compactContent" type="Enum">
+            <label>What the panel shows</label>
+            <choices>
+                <choice name="Highest"/>
+                <choice name="Session"/>
+                <choice name="Weekly"/>
+            </choices>
+            <default>Highest</default>
+        </entry>
+        <entry name="compactProvider" type="String">
+            <label>Provider shown in the panel, empty for whichever is highest</label>
+            <default></default>
+        </entry>
+        <entry name="showBarInPanel" type="Bool">
+            <label>Draw a usage bar next to the panel percentage</label>
+            <default>true</default>
+        </entry>
+    </group>
+
+    <group name="Providers">
+        <entry name="providers" type="StringList">
+            <label>Provider keys to poll</label>
+            <default>claude</default>
+        </entry>
+    </group>
+</kcfg>

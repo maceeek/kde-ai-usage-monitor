@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the Rust toolchain
+        run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Lint
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      # libsqlite3 is dlopened at run time, so the Cursor tests need it present.
+      - name: Install libsqlite3
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-0
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build release
+        run: cargo build --release --locked
+
+  qml:
+    name: Applet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt QML tools
+        run: sudo apt-get update && sudo apt-get install -y qt6-declarative-dev-tools
+
+      # Plasma's QML modules are not installed on the runner, so every import
+      # of org.kde.* is unresolvable here and qmllint always has something to
+      # say. The output is worth reading for real syntax errors, but it cannot
+      # gate the build, hence continue-on-error.
+      - name: Lint QML
+        continue-on-error: true
+        run: find plasmoid -name '*.qml' -print -exec qmllint {} +
+
+      - name: Validate the applet metadata
+        run: python3 -c "import json,sys; json.load(open('plasmoid/package/metadata.json'))"
