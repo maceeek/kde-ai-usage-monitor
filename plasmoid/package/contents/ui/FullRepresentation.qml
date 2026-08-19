@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.components as PlasmaComponents
@@ -9,6 +10,9 @@ import "../code/format.js" as Format
 /// The popup: every polled provider, one card each.
 PlasmaExtras.Representation {
     id: full
+
+    /// The applet root — passed in, because ids do not cross files.
+    required property var monitor
 
     Layout.minimumWidth: Kirigami.Units.gridUnit * 18
     Layout.minimumHeight: Kirigami.Units.gridUnit * 12
@@ -30,7 +34,7 @@ PlasmaExtras.Representation {
             Item { Layout.fillWidth: true }
 
             PlasmaComponents.BusyIndicator {
-                running: root.polling
+                running: full.monitor.polling
                 visible: running
                 implicitWidth: Kirigami.Units.iconSizes.small
                 implicitHeight: implicitWidth
@@ -40,23 +44,23 @@ PlasmaExtras.Representation {
                 icon.name: "view-refresh"
                 display: PlasmaComponents.AbstractButton.IconOnly
                 text: i18n("Refresh Now")
-                enabled: !root.polling
-                onClicked: root.refresh()
+                enabled: !full.monitor.polling
+                onClicked: full.monitor.refresh()
 
-                PlasmaComponents.ToolTip {
-                    text: parent.text
-                }
+                QQC2.ToolTip.text: text
+                QQC2.ToolTip.visible: hovered
+                QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
             }
 
             PlasmaComponents.ToolButton {
                 icon.name: "configure"
                 display: PlasmaComponents.AbstractButton.IconOnly
                 text: i18n("Configure…")
-                onClicked: plasmoid.internalAction("configure").trigger()
+                onClicked: Plasmoid.internalAction("configure").trigger()
 
-                PlasmaComponents.ToolTip {
-                    text: parent.text
-                }
+                QQC2.ToolTip.text: text
+                QQC2.ToolTip.visible: hovered
+                QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
             }
         }
     }
@@ -66,40 +70,43 @@ PlasmaExtras.Representation {
     PlasmaExtras.PlaceholderMessage {
         anchors.centerIn: parent
         width: parent.width - Kirigami.Units.gridUnit * 2
-        visible: root.backendError.length > 0
+        visible: full.monitor.backendError.length > 0
         iconName: "dialog-error"
         text: i18n("The usage backend did not run")
-        explanation: root.backendError
+        explanation: full.monitor.backendError
         helpfulAction: Kirigami.Action {
             icon.name: "view-refresh"
             text: i18n("Try Again")
-            onTriggered: root.refresh()
+            onTriggered: full.monitor.refresh()
         }
     }
 
     PlasmaExtras.PlaceholderMessage {
         anchors.centerIn: parent
         width: parent.width - Kirigami.Units.gridUnit * 2
-        visible: root.backendError.length === 0 && !root.hasData
+        visible: full.monitor.backendError.length === 0 && !full.monitor.hasData
         iconName: "utilities-system-monitor"
         text: i18n("Waiting for the first poll…")
     }
 
-    contentItem: PlasmaComponents.ScrollView {
-        visible: root.hasData && root.backendError.length === 0
+    PlasmaComponents.ScrollView {
+        id: scroll
+        anchors.fill: parent
+        visible: full.monitor.hasData && full.monitor.backendError.length === 0
 
         ColumnLayout {
-            width: full.contentItem.availableWidth
+            width: scroll.availableWidth
             spacing: Kirigami.Units.largeSpacing
 
             Repeater {
-                model: root.providerList
+                model: full.monitor.providerList
 
                 ProviderItem {
                     required property var modelData
 
                     Layout.fillWidth: true
                     Layout.topMargin: Kirigami.Units.smallSpacing
+                    monitor: full.monitor
                     provider: modelData
                 }
             }
@@ -109,19 +116,17 @@ PlasmaExtras.Representation {
     footer: PlasmaExtras.PlasmoidHeading {
         position: PlasmaComponents.ToolBar.Footer
 
-        RowLayout {
+        PlasmaComponents.Label {
             anchors.fill: parent
-
-            PlasmaComponents.Label {
-                Layout.fillWidth: true
-                font: Kirigami.Theme.smallFont
-                opacity: 0.7
-                elide: Text.ElideRight
-                text: root.snapshot
-                    ? i18n("Updated %1 ago", Format.duration(
-                        Math.max(0, Math.floor(root.clock / 1000) - root.snapshot.generated_at)))
-                    : ""
-            }
+            verticalAlignment: Text.AlignVCenter
+            font: Kirigami.Theme.smallFont
+            opacity: 0.7
+            elide: Text.ElideRight
+            text: full.monitor.snapshot
+                ? i18n("Updated %1 ago", Format.duration(
+                    Math.max(0, Math.floor(full.monitor.clock / 1000)
+                        - full.monitor.snapshot.generated_at)))
+                : ""
         }
     }
 }

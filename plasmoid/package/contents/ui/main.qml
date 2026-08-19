@@ -27,15 +27,17 @@ PlasmoidItem {
     readonly property var summary: snapshot ? snapshot.summary : null
     readonly property bool hasData: providerList.length > 0
 
+    // Representations live in their own files, which cannot see this file's ids,
+    // so the applet hands itself over explicitly.
     preferredRepresentation: compactRepresentation
-    compactRepresentation: CompactRepresentation {}
-    fullRepresentation: FullRepresentation {}
+    compactRepresentation: CompactRepresentation { monitor: root }
+    fullRepresentation: FullRepresentation { monitor: root }
 
     Plasmoid.status: {
         if (backendError.length > 0) {
             return PlasmaCore.Types.NeedsAttentionStatus;
         }
-        if (summary && summary.percentage >= plasmoid.configuration.criticalThreshold) {
+        if (summary && summary.percentage >= Plasmoid.configuration.criticalThreshold) {
             return PlasmaCore.Types.NeedsAttentionStatus;
         }
         return hasData ? PlasmaCore.Types.ActiveStatus : PlasmaCore.Types.PassiveStatus;
@@ -65,10 +67,10 @@ PlasmoidItem {
 
     /// Colour for a usage percentage, following the configured thresholds.
     function usageColor(percentage) {
-        if (percentage >= plasmoid.configuration.criticalThreshold) {
+        if (percentage >= Plasmoid.configuration.criticalThreshold) {
             return Kirigami.Theme.negativeTextColor;
         }
-        if (percentage >= plasmoid.configuration.warningThreshold) {
+        if (percentage >= Plasmoid.configuration.warningThreshold) {
             return Kirigami.Theme.neutralTextColor;
         }
         return Kirigami.Theme.positiveTextColor;
@@ -86,7 +88,7 @@ PlasmoidItem {
             return null;
         }
 
-        var configured = plasmoid.configuration.compactProvider;
+        var configured = Plasmoid.configuration.compactProvider;
         var candidates = providerList.filter(function (provider) {
             return provider.session && (configured === "" || provider.id === configured);
         });
@@ -94,7 +96,7 @@ PlasmoidItem {
             return null;
         }
 
-        var mode = plasmoid.configuration.compactContent;
+        var mode = Plasmoid.configuration.compactContent;
         if (mode === 1 || mode === 2) {
             var key = mode === 1 ? "session" : "weekly";
             return candidates.map(function (provider) {
@@ -125,13 +127,13 @@ PlasmoidItem {
     }
 
     function pollCommand() {
-        var binary = plasmoid.configuration.binaryPath || "kde-ai-usage-monitor";
-        var providers = plasmoid.configuration.providers.join(",");
+        var binary = Plasmoid.configuration.binaryPath || "kde-ai-usage-monitor";
+        var providers = Plasmoid.configuration.providers.join(",");
         var command = shellQuote(binary) + " --format json";
         if (providers.length > 0) {
             command += " --providers " + shellQuote(providers);
         }
-        if (plasmoid.configuration.refreshTokens) {
+        if (Plasmoid.configuration.refreshTokens) {
             command += " --refresh-tokens";
         }
         return command;
@@ -159,7 +161,7 @@ PlasmoidItem {
                 // A non-zero exit with no output means the binary is missing or
                 // could not start; anything else is reported inside the JSON.
                 root.backendError = (data["stderr"] || "").trim()
-                    || i18n("Could not run %1", plasmoid.configuration.binaryPath);
+                    || i18n("Could not run %1", Plasmoid.configuration.binaryPath);
                 return;
             }
 
@@ -174,7 +176,7 @@ PlasmoidItem {
 
     Timer {
         id: pollTimer
-        interval: Math.max(30, plasmoid.configuration.intervalSeconds) * 1000
+        interval: Math.max(30, Plasmoid.configuration.intervalSeconds) * 1000
         running: true
         repeat: true
         triggeredOnStart: true
@@ -185,7 +187,7 @@ PlasmoidItem {
         // Only needs to be fine-grained enough for a minute-resolution
         // countdown to look alive.
         interval: 20000
-        running: root.expanded || plasmoid.formFactor !== PlasmaCore.Types.Planar
+        running: root.expanded || Plasmoid.formFactor !== PlasmaCore.Types.Planar
         repeat: true
         onTriggered: root.clock = Date.now()
     }

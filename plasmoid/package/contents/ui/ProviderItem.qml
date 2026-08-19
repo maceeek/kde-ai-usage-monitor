@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.components as PlasmaComponents
@@ -8,6 +9,8 @@ import "../code/format.js" as Format
 ColumnLayout {
     id: card
 
+    /// The applet root, for colours and the shared clock.
+    required property var monitor
     required property var provider
 
     spacing: Kirigami.Units.smallSpacing
@@ -24,20 +27,23 @@ ColumnLayout {
         Kirigami.Icon {
             source: card.provider.stale ? "documentinfo" : "dialog-warning"
             visible: !card.provider.ok
-            color: Kirigami.Theme.neutralTextColor
             implicitWidth: Kirigami.Units.iconSizes.small
             implicitHeight: implicitWidth
 
-            PlasmaComponents.ToolTip {
-                text: card.provider.message || ""
-                visible: parent.hovered
+            HoverHandler {
+                id: stateHover
             }
+
+            QQC2.ToolTip.text: card.provider.message || ""
+            QQC2.ToolTip.visible: stateHover.hovered && QQC2.ToolTip.text.length > 0
+            QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
         }
 
         Item { Layout.fillWidth: true }
 
         PlasmaComponents.Label {
-            text: card.provider.stale ? i18n("stale") : ""
+            text: i18n("stale")
+            visible: card.provider.stale
             font: Kirigami.Theme.smallFont
             opacity: 0.6
         }
@@ -66,11 +72,13 @@ ColumnLayout {
             Layout.fillWidth: true
             label: modelData.label
             percentage: modelData.percentage
-            barColor: root.usageColor(modelData.percentage)
+            barColor: card.monitor.usageColor(modelData.percentage)
             dimmed: card.provider.stale
             resetText: {
-                var remaining = root.secondsUntil(modelData.resets_at);
-                return remaining === undefined ? "" : i18n("resets in %1", Format.duration(remaining));
+                var remaining = card.monitor.secondsUntil(modelData.resets_at);
+                return remaining === undefined
+                    ? ""
+                    : i18n("resets in %1", Format.duration(remaining));
             }
         }
     }

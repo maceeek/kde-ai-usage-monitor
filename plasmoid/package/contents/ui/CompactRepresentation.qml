@@ -11,9 +11,12 @@ import "../code/format.js" as Format
 MouseArea {
     id: compact
 
-    readonly property var entry: root.compactSection()
-    readonly property bool vertical: plasmoid.formFactor === PlasmaCore.Types.Vertical
-    readonly property color valueColor: entry ? root.usageColor(entry.section.percentage)
+    /// The applet root — passed in, because ids do not cross files.
+    required property var monitor
+
+    readonly property var entry: monitor.compactSection()
+    readonly property bool vertical: Plasmoid.formFactor === PlasmaCore.Types.Vertical
+    readonly property color valueColor: entry ? monitor.usageColor(entry.section.percentage)
                                               : Kirigami.Theme.disabledTextColor
 
     Layout.minimumWidth: vertical ? 0 : contentRow.implicitWidth + Kirigami.Units.smallSpacing * 2
@@ -21,12 +24,15 @@ MouseArea {
     Layout.preferredWidth: Layout.minimumWidth
     Layout.preferredHeight: Layout.minimumHeight
 
+    // Stale numbers stay readable but visibly second-hand.
+    opacity: (entry && entry.provider.stale) ? 0.6 : 1.0
+
     acceptedButtons: Qt.LeftButton | Qt.MiddleButton
     onClicked: function (mouse) {
         if (mouse.button === Qt.MiddleButton) {
-            root.refresh();
+            compact.monitor.refresh();
         } else {
-            root.expanded = !root.expanded;
+            compact.monitor.expanded = !compact.monitor.expanded;
         }
     }
 
@@ -55,13 +61,13 @@ MouseArea {
                                          Math.round(compact.height * (compact.vertical ? 0.3 : 0.45)))
             }
 
-            // The bar doubles as the "which window is this" cue when the panel
-            // is too short for a label.
+            // The bar carries the same reading as the number for anyone who
+            // reads shapes faster than digits.
             Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: Math.max(Kirigami.Units.gridUnit * 2, compact.width * 0.7)
                 Layout.preferredHeight: Math.max(2, Math.round(Kirigami.Units.gridUnit / 6))
-                visible: plasmoid.configuration.showBarInPanel && !!compact.entry
+                visible: Plasmoid.configuration.showBarInPanel && !!compact.entry
                 radius: height / 2
                 color: Qt.rgba(Kirigami.Theme.textColor.r,
                                Kirigami.Theme.textColor.g,
@@ -86,7 +92,4 @@ MouseArea {
             }
         }
     }
-
-    // Stale numbers stay readable but visibly second-hand.
-    opacity: (compact.entry && compact.entry.provider.stale) ? 0.6 : 1.0
 }

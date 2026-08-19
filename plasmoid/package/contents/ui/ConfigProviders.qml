@@ -46,9 +46,10 @@ KCM.SimpleKCM {
 
             QQC2.CheckBox {
                 required property var modelData
+                required property int index
 
-                Kirigami.FormData.label: modelData === page.knownProviders[0]
-                    ? i18n("Poll:") : ""
+                // Only the first row carries the group label.
+                Kirigami.FormData.label: index === 0 ? i18n("Poll:") : ""
                 text: modelData.name + " — " + modelData.hint
                 checked: (page.cfg_providers || []).indexOf(modelData.key) !== -1
                 onToggled: page.toggleProvider(modelData.key, checked)
