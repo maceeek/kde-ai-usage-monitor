@@ -1,0 +1,53 @@
+# Maintainer: kde-ai-usage-monitor contributors
+#
+# Builds a tagged release. Bump pkgver, refresh the checksum with `updpkgsums`,
+# then:
+#
+#   cd packaging/arch/kde-ai-usage-monitor && makepkg -si
+
+pkgname=kde-ai-usage-monitor
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="AI coding-assistant usage monitor for KDE Plasma (Claude Code, Codex, Cursor, OpenCode, Antigravity)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/maceeek/kde-ai-usage-monitor"
+license=('MIT')
+depends=('gcc-libs' 'sqlite' 'plasma-workspace')
+makedepends=('cargo')
+optdepends=('kwallet: read tokens stored in KWallet'
+            'libsecret: read tokens stored in the freedesktop Secret Service')
+source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+    cd "${pkgname}-${pkgver}"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+    cd "${pkgname}-${pkgver}"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo build --frozen --release
+}
+
+check() {
+    cd "${pkgname}-${pkgver}"
+    export RUSTUP_TOOLCHAIN=stable
+    cargo test --frozen --release
+}
+
+package() {
+    cd "${pkgname}-${pkgver}"
+    install -Dm755 "target/release/${pkgname}" "${pkgdir}/usr/bin/${pkgname}"
+    install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+    install -Dm644 NOTICE "${pkgdir}/usr/share/licenses/${pkgname}/NOTICE"
+    install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+
+    local appletdir="${pkgdir}/usr/share/plasma/plasmoids/com.github.maceeek.aiusagemonitor"
+    install -dm755 "${appletdir}"
+    cp -r plasmoid/package/. "${appletdir}/"
+    find "${appletdir}" -type d -exec chmod 755 {} +
+    find "${appletdir}" -type f -exec chmod 644 {} +
+}

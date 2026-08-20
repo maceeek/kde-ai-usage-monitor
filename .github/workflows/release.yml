@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install the Rust toolchain
+        run: rustup toolchain install stable --profile minimal
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --locked
+
+      # The binary links only libc and libgcc — TLS is rustls and SQLite is
+      # dlopened — so one x86_64 tarball works across distributions.
+      - name: Stage the tarball
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          stage="kde-ai-usage-monitor-${version}-x86_64"
+          mkdir -p "${stage}"
+          cp target/release/kde-ai-usage-monitor "${stage}/"
+          cp -r plasmoid packaging/install.sh README.md LICENSE NOTICE "${stage}/"
+          tar czf "${stage}.tar.gz" "${stage}"
+          sha256sum "${stage}.tar.gz" > "${stage}.tar.gz.sha256"
+          echo "STAGE=${stage}" >> "${GITHUB_ENV}"
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.STAGE }}.tar.gz
+            ${{ env.STAGE }}.tar.gz.sha256
+          generate_release_notes: true

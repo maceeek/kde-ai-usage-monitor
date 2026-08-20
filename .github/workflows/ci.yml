@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+# Nothing here installs system packages. The first run of this workflow hung for
+# six hours in `apt-get update` because the runner's Azure mirror stopped
+# answering, so the jobs are built to need only what the runner image already
+# ships — and carry a timeout so a hang costs minutes rather than a whole
+# runner-day.
+jobs:
+  rust:
+    name: Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install the Rust toolchain
+        run: rustup toolchain install stable --profile minimal --component rustfmt,clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Lint
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      # libsqlite3 is dlopened at run time. The runner image already has it
+      # (Python links against it), and the tests that need it say so and skip
+      # if it is ever absent, so there is nothing to install.
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build release
+        run: cargo build --release --locked
+
+  applet:
+    name: Applet
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      # qmllint cannot resolve a single org.kde.* import without Plasma's QML
+      # modules installed, which is not something a runner can have — so this
+      # checks the things that break the package in practice instead: config
+      # bindings, category sources, metadata, and bracket balance.
+      - name: Check the applet package
+        run: python3 scripts/check-plasmoid.py

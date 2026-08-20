@@ -1,0 +1,29 @@
+[package]
+name = "kde-ai-usage-monitor"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87"
+license = "MIT"
+description = "AI coding-assistant usage monitor for KDE Plasma"
+repository = "https://github.com/maceeek/kde-ai-usage-monitor"
+readme = "README.md"
+keywords = ["kde", "plasma", "claude", "usage", "monitor"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "kde-ai-usage-monitor"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+# `native-certs` keeps corporate CA bundles working; TLS itself is rustls,
+# so the binary needs no OpenSSL at build or run time.
+ureq = { version = "2", features = ["json", "native-certs", "proxy-from-env"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1
