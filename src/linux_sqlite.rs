@@ -329,6 +329,17 @@ pub fn query_optional_text(
 mod tests {
     use super::*;
 
+    /// These tests need the system SQLite the loader dlopens. Every machine
+    /// this project targets has it — the skip is for exotic build environments,
+    /// and it reports itself rather than passing quietly.
+    fn sqlite_present() -> bool {
+        if Library::load().is_ok() {
+            return true;
+        }
+        eprintln!("skipping: system SQLite (libsqlite3.so.0) is not available here");
+        false
+    }
+
     /// The fixture is a real Cursor-shaped `state.vscdb`, so this exercises the
     /// whole path: `dlopen`, prepare, bind, step, and the text copy-out.
     fn fixture() -> std::path::PathBuf {
@@ -340,6 +351,9 @@ mod tests {
 
     #[test]
     fn reads_a_bound_value_out_of_a_real_database() {
+        if !sqlite_present() {
+            return;
+        }
         let value = query_optional_text(
             &fixture(),
             "SELECT value FROM ItemTable WHERE key = ?1",
@@ -354,6 +368,9 @@ mod tests {
 
     #[test]
     fn a_query_that_matches_nothing_is_not_an_error() {
+        if !sqlite_present() {
+            return;
+        }
         let value = query_optional_text(
             &fixture(),
             "SELECT value FROM ItemTable WHERE key = ?1",
@@ -365,6 +382,9 @@ mod tests {
 
     #[test]
     fn a_broken_statement_reports_the_sqlite_error() {
+        if !sqlite_present() {
+            return;
+        }
         let error = query_optional_text(&fixture(), "SELECT nope FROM Missing WHERE key = ?1", "x")
             .unwrap_err();
         assert!(error.to_string().contains("unable to prepare"));

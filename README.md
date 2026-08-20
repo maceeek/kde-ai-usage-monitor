@@ -178,17 +178,22 @@ with the Claude Code CLI instead.
 ## Development
 
 ```bash
-cargo test          # 53 tests, no network access needed
+cargo test                          # 53 tests, no network access needed
 cargo clippy --all-targets -- -D warnings
 cargo fmt --all
+python3 scripts/check-plasmoid.py   # static checks on the applet package
 ```
 
 The Cursor tests read a real SQLite file from `tests/fixtures/`, so they need
-`libsqlite3.so.0` present — which any KDE system already has.
+`libsqlite3.so.0`; they say so and skip if it is missing.
 
-QML has no test harness here; the applet was written against the Plasma 6 API
-and reviewed by reading, not by running. Bug reports with `--diagnose` output
-are welcome.
+`check-plasmoid.py` is what stands in for a QML test harness: it verifies that
+every `cfg_*` binding in a config page has a matching entry in `config/main.xml`
+(Plasma ignores the ones it cannot match, so a typo means a setting that never
+saves), that config categories point at files that exist, that the metadata is
+well-formed, and that brackets balance. It needs no Qt, which is why CI can run
+it. Actual rendering was reviewed by reading, not by running — bug reports with
+`--diagnose` output are welcome.
 
 ## License
 
