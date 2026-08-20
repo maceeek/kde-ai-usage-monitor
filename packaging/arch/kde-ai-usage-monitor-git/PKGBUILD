@@ -24,9 +24,18 @@ sha256sums=('SKIP')
 
 pkgver() {
     cd "${srcdir}/${_pkgname}"
-    # Falls back to the crate version when the checkout has no tags yet.
-    git describe --long --tags 2>/dev/null | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' ||
-        printf "0.1.0.r%s.g%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+    # Falls back to the crate version when the checkout has no tags yet. Piping
+    # git describe straight into sed would hide its failure behind sed's exit
+    # status and leave pkgver empty, so capture the output first.
+    local describe
+    if describe=$(git describe --long --tags 2>/dev/null) && [[ -n ${describe} ]]; then
+        printf '%s' "${describe}" | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
+    else
+        local crate
+        crate=$(sed -n '/^\[package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml)
+        printf '%s.r%s.g%s' "${crate:-0}" "$(git rev-list --count HEAD)" \
+            "$(git rev-parse --short HEAD)"
+    fi
 }
 
 prepare() {
