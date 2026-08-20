@@ -16,6 +16,13 @@ depends=('gcc-libs' 'sqlite' 'plasma-workspace')
 makedepends=('cargo')
 optdepends=('kwallet: read tokens stored in KWallet'
             'libsecret: read tokens stored in the freedesktop Secret Service')
+# The `ring` crate ships hand-written C and assembly that its build script
+# compiles with the CFLAGS makepkg exports. When makepkg.conf enables LTO
+# globally (CachyOS does, and Arch users often do) those objects land in
+# libring-core.a as GCC LTO bitcode, which the linker rustc drives cannot
+# resolve — the build dies on undefined ring_core_* symbols. Rust does its own
+# LTO via the release profile anyway, so drop makepkg's.
+options=('!lto')
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
 sha256sums=('SKIP')
 
