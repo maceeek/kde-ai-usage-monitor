@@ -20,7 +20,8 @@ KCM.SimpleKCM {
         { key: "codex", name: i18n("Codex"), hint: i18n("OpenAI") },
         { key: "antigravity", name: i18n("Antigravity"), hint: i18n("Google") },
         { key: "opencode", name: i18n("OpenCode"), hint: i18n("OpenCode Go") },
-        { key: "cursor", name: i18n("Cursor"), hint: i18n("Cursor") }
+        { key: "cursor", name: i18n("Cursor"), hint: i18n("Cursor") },
+        { key: "copilot", name: i18n("GitHub Copilot"), hint: i18n("GitHub") }
     ]
 
     function toggleProvider(key, enabled) {

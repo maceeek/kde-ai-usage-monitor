@@ -6,8 +6,8 @@ import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasmoid
 import "../code/format.js" as Format
 
-/// What sits in the panel: one percentage, optionally with a bar, coloured by
-/// the configured thresholds.
+/// What sits in the panel: one percentage, optionally with a bar and the time
+/// left until the 5h window resets, coloured by the configured thresholds.
 MouseArea {
     id: compact
 
@@ -18,6 +18,10 @@ MouseArea {
     readonly property bool vertical: Plasmoid.formFactor === PlasmaCore.Types.Vertical
     readonly property color valueColor: entry ? monitor.usageColor(entry.section.percentage)
                                               : Kirigami.Theme.disabledTextColor
+    readonly property string resetText: Plasmoid.configuration.showResetInPanel
+                                        ? monitor.panelResetText(entry) : ""
+    readonly property real valuePixelSize: Math.max(Kirigami.Units.gridUnit * 0.7,
+        Math.round(height * (vertical ? 0.3 : 0.45)))
 
     Layout.minimumWidth: vertical ? 0 : contentRow.implicitWidth + Kirigami.Units.smallSpacing * 2
     Layout.minimumHeight: vertical ? contentRow.implicitHeight + Kirigami.Units.smallSpacing * 2 : 0
@@ -36,10 +40,14 @@ MouseArea {
         }
     }
 
-    RowLayout {
+    // A horizontal panel has width to spare, so the countdown sits beside the
+    // number; a vertical one stacks it underneath.
+    GridLayout {
         id: contentRow
         anchors.centerIn: parent
-        spacing: Kirigami.Units.smallSpacing
+        columns: compact.vertical ? 1 : 3
+        rowSpacing: 0
+        columnSpacing: Kirigami.Units.smallSpacing
 
         Kirigami.Icon {
             source: "utilities-system-monitor"
@@ -53,19 +61,32 @@ MouseArea {
             visible: !!compact.entry
 
             PlasmaComponents.Label {
+                id: valueLabel
                 Layout.alignment: Qt.AlignHCenter
                 text: compact.entry ? Format.percentage(compact.entry.section.percentage) : ""
                 color: compact.valueColor
                 font.bold: true
-                font.pixelSize: Math.max(Kirigami.Units.gridUnit * 0.7,
-                                         Math.round(compact.height * (compact.vertical ? 0.3 : 0.45)))
+                font.pixelSize: compact.valuePixelSize
+            }
+
+            PlasmaComponents.Label {
+                Layout.alignment: Qt.AlignHCenter
+                visible: compact.vertical && compact.resetText.length > 0
+                text: compact.resetText
+                font.pixelSize: Math.max(Kirigami.Units.gridUnit * 0.55,
+                                         Math.round(compact.valuePixelSize * 0.8))
+                opacity: 0.8
             }
 
             // The bar carries the same reading as the number for anyone who
             // reads shapes faster than digits.
             Rectangle {
                 Layout.alignment: Qt.AlignHCenter
-                Layout.preferredWidth: Math.max(Kirigami.Units.gridUnit * 2, compact.width * 0.7)
+                // Sized off the number rather than the applet in a horizontal
+                // panel, or the countdown beside it would stretch the bar.
+                Layout.preferredWidth: compact.vertical
+                    ? Math.max(Kirigami.Units.gridUnit * 2, compact.width * 0.7)
+                    : Math.max(Kirigami.Units.gridUnit * 2, valueLabel.implicitWidth)
                 Layout.preferredHeight: Math.max(2, Math.round(Kirigami.Units.gridUnit / 6))
                 visible: Plasmoid.configuration.showBarInPanel && !!compact.entry
                 radius: height / 2
@@ -90,6 +111,15 @@ MouseArea {
                     }
                 }
             }
+        }
+
+        PlasmaComponents.Label {
+            Layout.alignment: Qt.AlignVCenter
+            visible: !compact.vertical && !!compact.entry && compact.resetText.length > 0
+            text: compact.resetText
+            font.pixelSize: Math.max(Kirigami.Units.gridUnit * 0.55,
+                                     Math.round(compact.valuePixelSize * 0.8))
+            opacity: 0.8
         }
     }
 }

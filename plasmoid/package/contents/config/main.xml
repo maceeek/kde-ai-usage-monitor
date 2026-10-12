@@ -44,6 +44,22 @@
             <label>Draw a usage bar next to the panel percentage</label>
             <default>true</default>
         </entry>
+        <entry name="showResetInPanel" type="Bool">
+            <label>Show the time left until the 5h window resets next to the panel percentage</label>
+            <default>false</default>
+        </entry>
+        <entry name="panelResetFormat" type="Enum">
+            <label>How the panel shows the 5h reset</label>
+            <choices>
+                <choice name="Remaining"/>
+                <choice name="ClockTime"/>
+            </choices>
+            <default>Remaining</default>
+        </entry>
+        <entry name="detailedTooltip" type="Bool">
+            <label>Show every window, limit and reset in the hover tooltip</label>
+            <default>true</default>
+        </entry>
     </group>
 
     <group name="Providers">

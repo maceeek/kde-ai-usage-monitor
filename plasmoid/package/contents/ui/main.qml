@@ -43,6 +43,13 @@ PlasmoidItem {
         return hasData ? PlasmaCore.Types.ActiveStatus : PlasmaCore.Types.PassiveStatus;
     }
 
+    // The detailed tooltip lays every window out with bars and reset times;
+    // the plain text below is what Plasma shows when it is switched off.
+    toolTipItem: Plasmoid.configuration.detailedTooltip ? detailedToolTip : null
+    property Item detailedToolTip: ToolTipContent {
+        monitor: root
+    }
+
     toolTipMainText: summary
         ? i18n("%1 · %2 %3", summary.name, summary.label, summary.text)
         : i18n("AI Usage Monitor")
@@ -54,14 +61,15 @@ PlasmoidItem {
             return i18n("Waiting for the first poll…");
         }
         return providerList.map(function (provider) {
-            if (!provider.session) {
+            var sections = Format.headlineSections(provider);
+            if (sections.length === 0) {
                 return i18n("%1: %2", provider.name, provider.message || i18n("no data"));
             }
-            var weekly = provider.weekly ? "   " + provider.weekly.label + " "
-                                           + Format.percentage(provider.weekly.percentage) : "";
-            return provider.name + ":   " + provider.session.label + " "
-                   + Format.percentage(provider.session.percentage) + weekly
-                   + (provider.stale ? i18n(" (stale)") : "");
+            return provider.name + ":   " + sections.map(function (section) {
+                var reset = root.secondsUntil(section.resets_at);
+                return section.label + " " + Format.percentage(section.percentage)
+                       + (reset !== undefined ? " (" + Format.duration(reset) + ")" : "");
+            }).join("   ") + (provider.stale ? i18n(" (stale)") : "");
         }).join("\n");
     }
 
@@ -90,7 +98,8 @@ PlasmoidItem {
 
         var configured = Plasmoid.configuration.compactProvider;
         var candidates = providerList.filter(function (provider) {
-            return provider.session && (configured === "" || provider.id === configured);
+            return Format.headlineSections(provider).length > 0
+                && (configured === "" || provider.id === configured);
         });
         if (candidates.length === 0) {
             return null;
@@ -113,13 +122,54 @@ PlasmoidItem {
         var best = null;
         for (var i = 0; i < candidates.length; ++i) {
             var provider = candidates[i];
-            [provider.session, provider.weekly].forEach(function (section) {
-                if (section && (!best || section.percentage > best.section.percentage)) {
+            Format.headlineSections(provider).forEach(function (section) {
+                if (!best || section.percentage > best.section.percentage) {
                     best = { provider: provider, section: section };
                 }
             });
         }
         return best;
+    }
+
+    /// Short status shown next to a provider's name in the popup and tooltip:
+    /// empty when the numbers are live, otherwise why they are not.
+    function providerStatus(provider) {
+        if (provider.ok) {
+            return "";
+        }
+        var retry = secondsUntil(provider.retry_at);
+        if (provider.state === "rate_limited") {
+            return retry ? i18n("rate limited · retrying in %1", Format.duration(retry))
+                         : i18n("rate limited");
+        }
+        if (provider.stale) {
+            var age = Math.max(0, Math.floor(clock / 1000) - provider.polled_at);
+            return i18n("stale · from %1 ago", Format.duration(age));
+        }
+        return "";
+    }
+
+    /// "resets in 1h 12m · 17:40", or nothing when the window has no reset.
+    function resetLabel(section) {
+        var summary = Format.resetSummary(section.resets_at, clock);
+        return summary.length > 0 ? i18n("resets in %1", summary) : "";
+    }
+
+    /// Text for the 5h countdown next to the panel percentage: the short
+    /// window of whichever provider the panel is showing, or of the configured
+    /// one. Empty when that provider has no short window or no reset time.
+    function panelResetText(entry) {
+        if (!entry || !entry.provider.session) {
+            return "";
+        }
+        var resetsAt = entry.provider.session.resets_at;
+        var remaining = secondsUntil(resetsAt);
+        if (remaining === undefined) {
+            return "";
+        }
+        return Plasmoid.configuration.panelResetFormat === 1
+            ? Format.resetClock(resetsAt, clock)
+            : Format.duration(remaining);
     }
 
     function shellQuote(value) {
@@ -185,10 +235,12 @@ PlasmoidItem {
 
     Timer {
         // Only needs to be fine-grained enough for a minute-resolution
-        // countdown to look alive.
+        // countdown to look alive — in the panel, the popup, and the tooltip.
         interval: 20000
         running: root.expanded || Plasmoid.formFactor !== PlasmaCore.Types.Planar
+                 || Plasmoid.configuration.showResetInPanel
         repeat: true
+        triggeredOnStart: true
         onTriggered: root.clock = Date.now()
     }
 

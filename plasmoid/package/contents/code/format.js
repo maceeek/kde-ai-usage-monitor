@@ -43,3 +43,59 @@ function secondsUntil(resetsAt, now) {
     var remaining = resetsAt - Math.floor(now / 1000);
     return remaining > 0 ? remaining : 0;
 }
+
+/// The headline windows a provider reported, in display order. Any of them can
+/// be missing: Copilot has no short window, and a Codex account on a spending
+/// cap may have only the monthly one.
+function headlineSections(provider) {
+    if (!provider) {
+        return [];
+    }
+    return [provider.session, provider.weekly, provider.monthly].filter(function (section) {
+        return !!section;
+    });
+}
+
+/// Every window worth listing in the popup and the tooltip: the headline ones,
+/// then per-model and other secondary quotas.
+function allSections(provider) {
+    return headlineSections(provider).concat(provider && provider.limits ? provider.limits : []);
+}
+
+/// `Locale.ShortFormat`. The `Locale` type is not in scope inside a
+/// `.pragma library` file, so its value is spelled out.
+var SHORT_FORMAT = 1;
+
+/// Wall-clock time a window resets, as the user's locale writes it. Resets more
+/// than a day out get the weekday too, since "08:00" alone would be ambiguous.
+function resetClock(resetsAt, now) {
+    if (!resetsAt) {
+        return "";
+    }
+    var date = new Date(resetsAt * 1000);
+    var locale = Qt.locale();
+    var time = date.toLocaleTimeString(locale, SHORT_FORMAT);
+    if (resetsAt * 1000 - now > 20 * 3600 * 1000) {
+        return locale.dayName(date.getDay(), SHORT_FORMAT) + " " + time;
+    }
+    return time;
+}
+
+/// "1h 12m · 17:40": how long, and when.
+function resetSummary(resetsAt, now) {
+    var remaining = secondsUntil(resetsAt, now);
+    if (remaining === undefined) {
+        return "";
+    }
+    return duration(remaining) + " · " + resetClock(resetsAt, now);
+}
+
+/// Plan names arrive lower-case from the APIs ("max", "plus", "enterprise").
+function planName(plan) {
+    if (!plan) {
+        return "";
+    }
+    return plan.split(/[_\s]+/).map(function (word) {
+        return word.charAt(0).toUpperCase() + word.slice(1);
+    }).join(" ");
+}
