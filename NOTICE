@@ -19,12 +19,15 @@ Files derived from upstream
   src/models.rs              <- src/models.rs (reset instants are Unix seconds)
   src/poller.rs              <- src/poller.rs (per-provider results; new
                                 ISO 8601 parser covering UTC offsets)
-  src/poller/claude.rs       <- src/poller/claude.rs (endpoints and header
-                                handling kept; Linux credential discovery)
+  src/poller/claude.rs       <- src/poller/claude.rs and claude/limits.rs
+                                (endpoints, header handling, limits and spend
+                                parsing kept; Linux credential discovery)
   src/poller/codex.rs        <- src/poller/codex.rs
   src/poller/cursor.rs       <- src/poller/cursor.rs
   src/poller/opencode.rs     <- src/poller/opencode.rs
   src/poller/antigravity.rs  <- src/poller/antigravity.rs
+  src/poller/copilot.rs      <- src/poller/copilot.rs (v2.16; Linux credential
+                                discovery instead of Credential Manager)
   src/poller/secret_store.rs <- the Windows Credential Manager reads in
                                 src/poller/antigravity.rs, reimplemented over
                                 libsecret and KWallet
@@ -38,9 +41,16 @@ Written for this project
   src/main.rs, src/config.rs, src/cache.rs, src/snapshot.rs,
   plasmoid/**, packaging/**, .github/**
 
+The provider layer was last brought up to date with upstream v2.18.1.
+
 Not ported
 ----------
 
 Upstream's Win32 window, theme engine, theme studio, tray icon, updater, and
 localisation layer have no counterpart here: Plasma draws the widget, themes it,
 and updates it through the distribution's package manager.
+
+Also not ported, for now: Grok Build monitoring, multiple Claude Code and Codex
+accounts, the Claude desktop app's token cache (DPAPI-encrypted, Windows-only),
+and Antigravity's OAuth refresh, which finds its client credentials inside the
+Windows install of Antigravity.

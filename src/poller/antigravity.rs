@@ -13,7 +13,9 @@ use std::path::PathBuf;
 use serde::Deserialize;
 
 use super::secret_store;
-use super::{build_agent, non_empty_environment, parse_iso8601, PollError, PollOptions};
+use super::{
+    build_agent, non_empty_environment, parse_iso8601, request_error, PollError, PollOptions,
+};
 use crate::diagnose;
 use crate::models::{UsageData, UsageSection};
 
@@ -149,14 +151,7 @@ fn post_json<T: serde::de::DeserializeOwned>(
         .send_json(&body)
     {
         Ok(response) => response,
-        Err(ureq::Error::Status(code @ (401 | 403), _)) => {
-            diagnose::log(format!("Antigravity {context} returned auth error {code}"));
-            return Err(PollError::AuthRequired);
-        }
-        Err(error) => {
-            diagnose::log_error(&format!("Antigravity {context} request failed"), error);
-            return Err(PollError::RequestFailed);
-        }
+        Err(error) => return Err(request_error(error, &format!("Antigravity {context}"))),
     };
 
     response.into_json().map_err(|error| {

@@ -20,10 +20,19 @@ pub struct CachedUsage {
     pub polled_at: i64,
 }
 
+/// Keyed by provider. Back-offs ride along under a key no provider can have,
+/// so caches written by 0.1 still load.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
 pub struct Cache {
+    #[serde(flatten)]
     entries: BTreeMap<String, CachedUsage>,
+    /// Unix second until which a provider asked not to be polled.
+    #[serde(
+        default,
+        rename = "_retry_at",
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
+    retry_at: BTreeMap<String, i64>,
 }
 
 impl Cache {
@@ -52,6 +61,23 @@ impl Cache {
     pub fn insert(&mut self, provider: ProviderId, usage: UsageData, polled_at: i64) {
         self.entries
             .insert(provider.key().to_string(), CachedUsage { usage, polled_at });
+        self.retry_at.remove(provider.key());
+    }
+
+    /// Seconds a provider still has to wait after asking us to back off.
+    pub fn cooldown(&self, provider: ProviderId, now: i64) -> Option<i64> {
+        self.retry_at
+            .get(provider.key())
+            .map(|retry_at| retry_at - now)
+            .filter(|remaining| *remaining > 0)
+    }
+
+    pub fn retry_at(&self, provider: ProviderId) -> Option<i64> {
+        self.retry_at.get(provider.key()).copied()
+    }
+
+    pub fn back_off(&mut self, provider: ProviderId, retry_at: i64) {
+        self.retry_at.insert(provider.key().to_string(), retry_at);
     }
 
     pub fn save(&self) {
@@ -96,5 +122,28 @@ mod tests {
         assert_eq!(entry.polled_at, 900);
         assert_eq!(entry.usage.session.percentage, 33.0);
         assert!(decoded.get(ProviderId::Claude).is_none());
+    }
+
+    #[test]
+    fn back_offs_survive_a_round_trip_and_clear_on_success() {
+        let mut cache = Cache::default();
+        cache.back_off(ProviderId::Claude, 1_000);
+        let mut decoded: Cache =
+            serde_json::from_str(&serde_json::to_string(&cache).unwrap()).unwrap();
+        assert_eq!(decoded.cooldown(ProviderId::Claude, 900), Some(100));
+        assert_eq!(decoded.cooldown(ProviderId::Claude, 1_000), None);
+        decoded.insert(ProviderId::Claude, UsageData::default(), 950);
+        assert_eq!(decoded.cooldown(ProviderId::Claude, 900), None);
+    }
+
+    #[test]
+    fn caches_from_older_versions_still_load() {
+        let decoded: Cache = serde_json::from_str(
+            r#"{"claude":{"usage":{"session":{"percentage":12.0,"resets_at":5},"weekly":{"percentage":1.0}},"polled_at":3}}"#,
+        )
+        .unwrap();
+        let entry = decoded.get(ProviderId::Claude).unwrap();
+        assert!(entry.usage.session.available);
+        assert_eq!(entry.usage.session.percentage, 12.0);
     }
 }

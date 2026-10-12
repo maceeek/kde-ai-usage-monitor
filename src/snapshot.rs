@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::Cache;
 use crate::format::{format_percentage, humanize_duration};
-use crate::models::{now_unix, UsageData, UsageSection};
+use crate::models::{now_unix, Credits, UsageData, UsageSection};
 use crate::poller::{PollError, ProviderPoll};
 use crate::providers::ProviderId;
 
@@ -50,10 +50,69 @@ pub struct ProviderSnapshot {
     pub polled_at: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+    /// When a rate-limited provider will next be asked, as Unix seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_at: Option<i64>,
+    /// Subscription name as the provider reports it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<String>,
+    /// The short window, absent when the provider has none (Copilot) or did
+    /// not report it this time.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<SectionSnapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub weekly: Option<SectionSnapshot>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monthly: Option<SectionSnapshot>,
+    /// Per-model and other secondary quotas, for the popup and tooltip.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub limits: Vec<LimitSnapshot>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credits: Option<CreditsSnapshot>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LimitSnapshot {
+    pub key: String,
+    /// The provider says this is the quota currently holding usage back.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub active: bool,
+    #[serde(flatten)]
+    pub section: SectionSnapshot,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CreditsSnapshot {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub used: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remaining: Option<f64>,
+    /// Share of the cap spent, when there is a cap.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub percentage: Option<f64>,
+    /// `$12.50 of $50.00` or `$10.00 left`.
+    pub text: String,
+}
+
+impl CreditsSnapshot {
+    fn new(credits: &Credits) -> Self {
+        let money = |amount: f64| format!("${amount:.2}");
+        let text = match (credits.used, credits.limit, credits.remaining) {
+            (Some(used), Some(limit), _) => format!("{} of {}", money(used), money(limit)),
+            (_, _, Some(remaining)) => format!("{} left", money(remaining)),
+            (Some(used), None, None) => format!("{} spent", money(used)),
+            _ => String::new(),
+        };
+        Self {
+            used: credits.used,
+            limit: credits.limit,
+            remaining: credits.remaining,
+            percentage: credits.percentage(),
+            text,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -95,7 +154,12 @@ impl Snapshot {
                     cache.insert(poll.provider, usage.clone(), now);
                     ProviderSnapshot::ok(poll.provider, usage, now)
                 }
-                Err(error) => ProviderSnapshot::failed(poll.provider, *error, cache, now),
+                Err(error) => {
+                    if let Some(retry_after) = error.retry_after() {
+                        cache.back_off(poll.provider, now + retry_after);
+                    }
+                    ProviderSnapshot::failed(poll.provider, *error, cache, now)
+                }
             })
             .collect();
 
@@ -111,7 +175,6 @@ impl Snapshot {
 
 impl ProviderSnapshot {
     fn ok(provider: ProviderId, usage: &UsageData, now: i64) -> Self {
-        let (session, weekly) = sections(provider, usage, now);
         Self {
             id: provider.key().to_string(),
             name: provider.descriptor().display_name.to_string(),
@@ -121,14 +184,15 @@ impl ProviderSnapshot {
             past_reset: usage.is_past_reset(now),
             polled_at: now,
             message: None,
-            session: Some(session),
-            weekly: Some(weekly),
+            retry_at: None,
+            ..Self::empty(provider)
         }
+        .with_usage(provider, usage, now)
     }
 
     fn failed(provider: ProviderId, error: PollError, cache: &Cache, now: i64) -> Self {
         let cached = cache.get(provider);
-        Self {
+        let snapshot = Self {
             id: provider.key().to_string(),
             name: provider.descriptor().display_name.to_string(),
             state: error.key().to_string(),
@@ -137,32 +201,77 @@ impl ProviderSnapshot {
             past_reset: cached.is_some_and(|cached| cached.usage.is_past_reset(now)),
             polled_at: cached.map(|cached| cached.polled_at).unwrap_or(now),
             message: Some(error.hint(provider)),
-            session: cached.map(|cached| sections(provider, &cached.usage, now).0),
-            weekly: cached.map(|cached| sections(provider, &cached.usage, now).1),
+            retry_at: cache.retry_at(provider).filter(|retry_at| *retry_at > now),
+            ..Self::empty(provider)
+        };
+        match cached {
+            Some(cached) => snapshot.with_usage(provider, &cached.usage, now),
+            None => snapshot,
         }
     }
-}
 
-/// Build both window snapshots, letting the provider override the labels its
-/// descriptor supplies (OpenCode reports 7d or 30d depending on the account).
-fn sections(
-    provider: ProviderId,
-    usage: &UsageData,
-    now: i64,
-) -> (SectionSnapshot, SectionSnapshot) {
-    let descriptor = provider.descriptor();
-    let session_label = usage
-        .session_label
-        .as_deref()
-        .unwrap_or(descriptor.session_label);
-    let weekly_label = usage
-        .weekly_label
-        .as_deref()
-        .unwrap_or(descriptor.weekly_label);
-    (
-        SectionSnapshot::new(&usage.session, session_label, now),
-        SectionSnapshot::new(&usage.weekly, weekly_label, now),
-    )
+    fn empty(provider: ProviderId) -> Self {
+        Self {
+            id: provider.key().to_string(),
+            name: provider.descriptor().display_name.to_string(),
+            state: String::new(),
+            ok: false,
+            stale: false,
+            past_reset: false,
+            polled_at: 0,
+            message: None,
+            retry_at: None,
+            plan: None,
+            session: None,
+            weekly: None,
+            monthly: None,
+            limits: Vec::new(),
+            credits: None,
+        }
+    }
+
+    /// Fill in every window the provider reported, letting it override the
+    /// labels its descriptor supplies (OpenCode reports 7d or 30d depending on
+    /// the account).
+    fn with_usage(mut self, provider: ProviderId, usage: &UsageData, now: i64) -> Self {
+        let descriptor = provider.descriptor();
+        let section = |section: &UsageSection, label: &str| {
+            section
+                .available
+                .then(|| SectionSnapshot::new(section, label, now))
+        };
+        self.session = section(
+            &usage.session,
+            usage
+                .session_label
+                .as_deref()
+                .unwrap_or(descriptor.session_label),
+        );
+        self.weekly = section(
+            &usage.weekly,
+            usage
+                .weekly_label
+                .as_deref()
+                .unwrap_or(descriptor.weekly_label),
+        );
+        self.monthly = usage
+            .monthly
+            .as_ref()
+            .and_then(|monthly| section(monthly, "30d"));
+        self.limits = usage
+            .limits
+            .iter()
+            .filter(|limit| limit.usage.available)
+            .map(|limit| LimitSnapshot {
+                key: limit.key.clone(),
+                active: limit.active,
+                section: SectionSnapshot::new(&limit.usage, &limit.label, now),
+            })
+            .collect();
+        self.credits = usage.credits.as_ref().map(CreditsSnapshot::new);
+        self.plan = usage.plan.clone();
+        self
+    }
 }
 
 /// The number the panel shows: whichever window, across every provider that
@@ -172,7 +281,7 @@ fn summarize(providers: &[ProviderSnapshot]) -> Option<Summary> {
         .iter()
         .filter(|provider| !provider.stale)
         .flat_map(|provider| {
-            [&provider.session, &provider.weekly]
+            [&provider.session, &provider.weekly, &provider.monthly]
                 .into_iter()
                 .flatten()
                 .map(move |section| (provider, section))
@@ -282,6 +391,70 @@ mod tests {
         assert_eq!(summary.percentage, 88.0);
         assert_eq!(summary.label, "5h");
         assert_eq!(summary.text, "88%");
+    }
+
+    #[test]
+    fn unreported_windows_are_left_out_and_extras_are_passed_through() {
+        let mut cache = Cache::default();
+        let polls = vec![ProviderPoll {
+            provider: ProviderId::Copilot,
+            result: Ok(UsageData {
+                weekly: UsageSection::new(25.0, Some(now_unix() + 86_400)),
+                weekly_label: Some("30d".into()),
+                monthly: Some(UsageSection::new(40.0, None)),
+                limits: vec![crate::models::UsageLimit {
+                    key: "chat".into(),
+                    label: "Chat".into(),
+                    active: true,
+                    usage: UsageSection::new(80.0, None),
+                }],
+                credits: Some(Credits {
+                    used: Some(12.5),
+                    limit: Some(50.0),
+                    remaining: Some(37.5),
+                }),
+                plan: Some("pro".into()),
+                ..Default::default()
+            }),
+        }];
+
+        let snapshot = Snapshot::build(&polls, &mut cache);
+        let provider = &snapshot.providers[0];
+        assert!(provider.session.is_none());
+        assert_eq!(provider.weekly.as_ref().unwrap().label, "30d");
+        assert_eq!(provider.monthly.as_ref().unwrap().text, "40%");
+        assert_eq!(provider.limits[0].section.label, "Chat");
+        assert!(provider.limits[0].active);
+        let credits = provider.credits.as_ref().unwrap();
+        assert_eq!(credits.text, "$12.50 of $50.00");
+        assert_eq!(credits.percentage, Some(25.0));
+        assert_eq!(provider.plan.as_deref(), Some("pro"));
+        // The panel number can come from a provider with no session, and a
+        // binding monthly cap counts; per-model caps never speak for it.
+        assert_eq!(snapshot.summary.as_ref().unwrap().percentage, 40.0);
+
+        let json = serde_json::to_value(&snapshot).unwrap();
+        assert_eq!(json["providers"][0]["limits"][0]["label"], "Chat");
+        assert_eq!(json["providers"][0]["limits"][0]["percentage"], 80.0);
+    }
+
+    #[test]
+    fn a_rate_limited_provider_backs_off_and_says_until_when() {
+        let mut cache = Cache::default();
+        cache.insert(ProviderId::Claude, usage(30.0, 40.0), now_unix() - 60);
+        let polls = vec![ProviderPoll {
+            provider: ProviderId::Claude,
+            result: Err(PollError::RateLimited {
+                retry_after: Some(120),
+            }),
+        }];
+
+        let snapshot = Snapshot::build(&polls, &mut cache);
+        let provider = &snapshot.providers[0];
+        assert_eq!(provider.state, "rate_limited");
+        assert!(provider.stale);
+        assert!(provider.retry_at.is_some());
+        assert!(cache.cooldown(ProviderId::Claude, now_unix()).is_some());
     }
 
     #[test]

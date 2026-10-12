@@ -11,7 +11,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use super::{build_agent, non_empty_environment, parse_iso8601, PollError, PollOptions};
+use super::{
+    build_agent, non_empty_environment, parse_iso8601, request_error, PollError, PollOptions,
+};
 use crate::diagnose;
 use crate::models::{now_unix, UsageData, UsageSection};
 
@@ -201,11 +203,7 @@ fn fetch_usage(cookie: &str) -> Result<UsageData, PollError> {
         .call()
     {
         Ok(response) => response,
-        Err(ureq::Error::Status(401 | 403, _)) => return Err(PollError::AuthRequired),
-        Err(error) => {
-            diagnose::log_error("Cursor usage-summary request failed", error);
-            return Err(PollError::RequestFailed);
-        }
+        Err(error) => return Err(request_error(error, "Cursor usage-summary endpoint")),
     };
 
     let response: UsageSummaryResponse = response.into_json().map_err(|error| {
@@ -234,6 +232,7 @@ fn usage_from_summary(response: UsageSummaryResponse) -> Option<UsageData> {
         weekly: UsageSection::new(plan.api_percent_used.unwrap_or(0.0), reset),
         session_label: Some("Auto".into()),
         weekly_label: Some("API".into()),
+        ..Default::default()
     })
 }
 
