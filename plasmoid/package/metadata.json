@@ -7,13 +7,13 @@
             }
         ],
         "Category": "System Information",
-        "Description": "Claude Code, Codex, Cursor, OpenCode and Antigravity usage in your panel",
+        "Description": "Claude Code, Codex, GitHub Copilot, Cursor, OpenCode and Antigravity usage in your panel",
         "EnabledByDefault": true,
         "Icon": "utilities-system-monitor",
         "Id": "com.github.maceeek.aiusagemonitor",
         "License": "MIT",
         "Name": "AI Usage Monitor",
-        "Version": "0.1.0",
+        "Version": "0.2.0",
         "Website": "https://github.com/maceeek/kde-ai-usage-monitor"
     },
     "X-Plasma-API-Minimum-Version": "6.0"
