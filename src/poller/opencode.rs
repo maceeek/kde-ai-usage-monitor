@@ -10,9 +10,9 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use super::{build_agent, non_empty_environment, PollError, PollOptions};
+use super::{build_agent, non_empty_environment, request_error, PollError, PollOptions};
 use crate::diagnose;
-use crate::models::{now_unix, UsageData, UsageSection};
+use crate::models::{now_unix, UsageData, UsageLimit, UsageSection};
 
 const DASHBOARD_URL_PREFIX: &str = "https://opencode.ai/workspace/";
 const DASHBOARD_URL_SUFFIX: &str = "/go";
@@ -72,6 +72,25 @@ pub fn poll(_options: PollOptions) -> Result<UsageData, PollError> {
 
     let now = now_unix();
     let (weekly, weekly_label) = select_long_window(&usage, now);
+    // Whichever long window the panel does not show still belongs in the popup.
+    let showing_monthly = weekly_label.as_deref() == Some("30d");
+    let monthly = usage
+        .monthly
+        .as_ref()
+        .filter(|_| !showing_monthly)
+        .map(|window| section_from_window(window, now));
+    let limits = usage
+        .weekly
+        .as_ref()
+        .filter(|_| showing_monthly)
+        .map(|window| UsageLimit {
+            key: "weekly".into(),
+            label: "Weekly 7d".into(),
+            active: false,
+            usage: section_from_window(window, now),
+        })
+        .into_iter()
+        .collect();
     Ok(UsageData {
         session: usage
             .rolling
@@ -80,6 +99,8 @@ pub fn poll(_options: PollOptions) -> Result<UsageData, PollError> {
             .unwrap_or_default(),
         weekly,
         weekly_label,
+        monthly,
+        limits,
         ..Default::default()
     })
 }
@@ -159,11 +180,7 @@ fn fetch_usage(credentials: &DashboardCredentials) -> Result<DashboardUsage, Pol
         .call()
     {
         Ok(response) => response,
-        Err(ureq::Error::Status(401 | 403, _)) => return Err(PollError::AuthRequired),
-        Err(error) => {
-            diagnose::log_error("OpenCode Go dashboard request failed", error);
-            return Err(PollError::RequestFailed);
-        }
+        Err(error) => return Err(request_error(error, "OpenCode Go dashboard")),
     };
 
     let html = response.into_string().map_err(|error| {

@@ -55,3 +55,8 @@ jobs:
       # bindings, category sources, metadata, and bracket balance.
       - name: Check the applet package
         run: python3 scripts/check-plasmoid.py
+
+      # paru reads the release PKGBUILD's pkgver and the release workflow tags
+      # Cargo.toml's version, so the two (and the applet) must agree.
+      - name: Check the version is the same everywhere
+        run: python3 scripts/check-version.py

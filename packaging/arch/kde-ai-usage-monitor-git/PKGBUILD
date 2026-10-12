@@ -1,15 +1,16 @@
 # Maintainer: kde-ai-usage-monitor contributors
 #
-# Builds straight from the main branch — use this one on Arch and CachyOS until
-# there is a tagged release you want instead:
+# Builds straight from the main branch: every commit is a new version. paru
+# installs and updates it straight from this repository (see "Install with
+# paru" in the README); by hand:
 #
 #   cd packaging/arch/kde-ai-usage-monitor-git && makepkg -si
 
 pkgname=kde-ai-usage-monitor-git
 _pkgname=kde-ai-usage-monitor
-pkgver=0.1.0.r7.gbdc511d
+pkgver=0.2.0.r0.g0000000
 pkgrel=1
-pkgdesc="AI coding-assistant usage monitor for KDE Plasma (Claude Code, Codex, Cursor, OpenCode, Antigravity)"
+pkgdesc="AI coding-assistant usage monitor for KDE Plasma (Claude Code, Codex, GitHub Copilot, Cursor, OpenCode, Antigravity)"
 arch=('x86_64' 'aarch64')
 url="https://github.com/maceeek/kde-ai-usage-monitor"
 license=('MIT')

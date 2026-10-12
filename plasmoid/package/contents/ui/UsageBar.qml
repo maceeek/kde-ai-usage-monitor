@@ -12,6 +12,8 @@ ColumnLayout {
     property string resetText: ""
     property color barColor: Kirigami.Theme.highlightColor
     property bool dimmed: false
+    /// Secondary quotas get a thinner bar and a smaller percentage.
+    property bool compact: false
 
     spacing: Kirigami.Units.smallSpacing / 2
 
@@ -36,7 +38,9 @@ ColumnLayout {
 
         PlasmaComponents.Label {
             text: Math.round(root.percentage) + "%"
-            font.bold: true
+            font.bold: !root.compact
+            font.pointSize: root.compact ? Kirigami.Theme.smallFont.pointSize
+                                         : Kirigami.Theme.defaultFont.pointSize
         }
     }
 
@@ -44,7 +48,7 @@ ColumnLayout {
     // threshold colour without fighting the widget style.
     Rectangle {
         Layout.fillWidth: true
-        implicitHeight: Math.round(Kirigami.Units.gridUnit / 3)
+        implicitHeight: Math.round(Kirigami.Units.gridUnit / (root.compact ? 4 : 3))
         radius: height / 2
         color: Kirigami.Theme.backgroundColor
         border.width: 1

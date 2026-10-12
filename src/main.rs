@@ -185,8 +185,16 @@ fn run(args: Args) {
         .unwrap_or_else(|| config.interval());
 
     loop {
-        let polls = poller::poll(providers, options);
-        emit(&polls, &args, interval);
+        // Loaded before polling, so a provider that asked us to back off is
+        // left alone until its time is up.
+        let mut cache = if args.use_cache {
+            Cache::load()
+        } else {
+            Cache::default()
+        };
+        let now = models::now_unix();
+        let polls = poller::poll(providers, options, |provider| cache.cooldown(provider, now));
+        emit(&polls, &args, &mut cache, interval);
 
         if !args.watch {
             // A one-shot run reports a failure the caller can act on; the applet
@@ -217,13 +225,8 @@ fn wait_for_next_poll(interval: std::time::Duration, providers: ProviderSet) {
     }
 }
 
-fn emit(polls: &[ProviderPoll], args: &Args, interval: std::time::Duration) {
-    let mut cache = if args.use_cache {
-        Cache::load()
-    } else {
-        Cache::default()
-    };
-    let snapshot = Snapshot::build(polls, &mut cache);
+fn emit(polls: &[ProviderPoll], args: &Args, cache: &mut Cache, interval: std::time::Duration) {
+    let snapshot = Snapshot::build(polls, cache);
     if args.use_cache {
         cache.save();
     }
@@ -258,30 +261,48 @@ fn print_json(snapshot: &Snapshot, watch: bool) {
 }
 
 fn print_text(snapshot: &Snapshot) {
+    let window = |section: &snapshot::SectionSnapshot| {
+        let mut text = format!("{} {:>5}", section.label, section.text);
+        if let Some(resets_in) = &section.resets_in_text {
+            text.push_str(&format!(" (resets in {resets_in})"));
+        }
+        text
+    };
+
     for provider in &snapshot.providers {
-        let mut line = format!("{:<14}", provider.name);
-        match (&provider.session, &provider.weekly) {
-            (Some(session), Some(weekly)) => {
-                line.push_str(&format!("{} {:>5}", session.label, session.text));
-                if let Some(resets_in) = &session.resets_in_text {
-                    line.push_str(&format!(" (resets in {resets_in})"));
-                }
-                line.push_str(&format!("   {} {:>5}", weekly.label, weekly.text));
-                if let Some(resets_in) = &weekly.resets_in_text {
-                    line.push_str(&format!(" (resets in {resets_in})"));
-                }
-                if provider.stale {
-                    line.push_str("   [stale]");
-                }
-            }
-            _ => line.push_str(
+        let mut line = format!("{:<16}", provider.name);
+        let headline: Vec<String> = [&provider.session, &provider.weekly, &provider.monthly]
+            .into_iter()
+            .flatten()
+            .map(window)
+            .collect();
+        if headline.is_empty() {
+            line.push_str(
                 provider
                     .message
                     .as_deref()
                     .unwrap_or("no usage data available"),
-            ),
+            );
+        } else {
+            line.push_str(&headline.join("   "));
+            if provider.stale {
+                line.push_str("   [stale]");
+            }
         }
         println!("{line}");
+
+        // Secondary detail goes on indented lines, so the first line of each
+        // provider stays the one-glance summary it always was.
+        for limit in &provider.limits {
+            println!("{:<16}{}", "", window(&limit.section));
+        }
+        if let Some(credits) = provider
+            .credits
+            .as_ref()
+            .filter(|credits| !credits.text.is_empty())
+        {
+            println!("{:<16}credits {}", "", credits.text);
+        }
     }
 }
 

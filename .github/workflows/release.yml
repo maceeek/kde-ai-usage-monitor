@@ -1,12 +1,22 @@
 name: Release
 
+# A release is a version bump landing on main: when Cargo.toml carries a
+# version that has no `v<version>` tag yet, this tags the commit and publishes
+# the tarball. paru picks the new version up from the release PKGBUILD, which
+# check-version.py keeps in step with Cargo.toml. Pushing a tag by hand still
+# works too.
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -15,21 +25,48 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Work out the version
+        id: version
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == tag ]]; then
+            version=$(python3 scripts/check-version.py "${GITHUB_REF_NAME}")
+          else
+            version=$(python3 scripts/check-version.py)
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          # On a branch push, an existing tag means this version is already
+          # out and the commit is just ordinary work on main.
+          if [[ "${GITHUB_REF_TYPE}" != tag ]] && git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
+            echo "v${version} already released; nothing to do"
+            echo "publish=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "publish=true" >> "${GITHUB_OUTPUT}"
+          fi
 
       - name: Install the Rust toolchain
+        if: steps.version.outputs.publish == 'true'
         run: rustup toolchain install stable --profile minimal
 
       - uses: Swatinem/rust-cache@v2
+        if: steps.version.outputs.publish == 'true'
+
+      - name: Test
+        if: steps.version.outputs.publish == 'true'
+        run: cargo test --locked --release
 
       - name: Build
+        if: steps.version.outputs.publish == 'true'
         run: cargo build --release --locked
 
       # The binary links only libc and libgcc — TLS is rustls and SQLite is
       # dlopened — so one x86_64 tarball works across distributions.
       - name: Stage the tarball
+        if: steps.version.outputs.publish == 'true'
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          stage="kde-ai-usage-monitor-${version}-x86_64"
+          stage="kde-ai-usage-monitor-${{ steps.version.outputs.version }}-x86_64"
           mkdir -p "${stage}"
           cp target/release/kde-ai-usage-monitor "${stage}/"
           cp -r plasmoid packaging/install.sh README.md LICENSE NOTICE "${stage}/"
@@ -37,9 +74,14 @@ jobs:
           sha256sum "${stage}.tar.gz" > "${stage}.tar.gz.sha256"
           echo "STAGE=${stage}" >> "${GITHUB_ENV}"
 
+      # Creates the tag at this commit when it does not exist yet.
       - name: Publish the release
+        if: steps.version.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: v${{ steps.version.outputs.version }}
           files: |
             ${{ env.STAGE }}.tar.gz
             ${{ env.STAGE }}.tar.gz.sha256
